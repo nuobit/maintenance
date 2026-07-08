@@ -59,7 +59,10 @@ class MaintenanceRequest(models.Model):
                 po.currency_id._convert(
                     po.amount_total,
                     company_currency,
-                    record.company_id,
+                    # maintenance.request.company_id is optional; use each
+                    # purchase order's own company (always set) so the rate
+                    # context is deterministic and never empty.
+                    po.company_id,
                     date,
                 )
                 for po in record.purchase_order_ids.filtered(
