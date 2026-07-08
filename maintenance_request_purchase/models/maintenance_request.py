@@ -37,31 +37,13 @@ class MaintenanceRequest(models.Model):
         readonly=True,
     )
 
-    def _get_company(self):
-        """Deterministic company for the request.
-
-        maintenance.request.company_id is optional, so derive the company
-        from the request's own data -- its equipment, then its team, then
-        its creator (always set) -- instead of the acting user's company,
-        so a stored value never depends on who triggers the recompute.
-        """
-        self.ensure_one()
-        return (
-            self.company_id
-            or self.equipment_id.company_id
-            or self.maintenance_team_id.company_id
-            or self.create_uid.company_id
-        )
-
-    @api.depends(
-        "company_id.currency_id",
-        "equipment_id.company_id.currency_id",
-        "maintenance_team_id.company_id.currency_id",
-        "create_uid.company_id.currency_id",
-    )
+    # The company is not required so we have to ensure that a currency is stablished
+    @api.depends("company_id.currency_id")
     def _compute_currency_id(self):
         for record in self:
-            record.currency_id = record._get_company().currency_id.id
+            record.currency_id = (
+                record.company_id.currency_id.id or self.env.company.currency_id.id
+            )
 
     @api.depends(
         "purchase_order_ids.amount_total",
@@ -72,13 +54,15 @@ class MaintenanceRequest(models.Model):
     def _compute_total_purchase_amount(self):
         date = self.env.context.get("actual_date") or fields.Date.today()
         for record in self:
-            company = record._get_company()
             company_currency = record.currency_id
             total = sum(
                 po.currency_id._convert(
                     po.amount_total,
                     company_currency,
-                    company,
+                    # maintenance.request.company_id is optional; use each
+                    # purchase order's own company (always set) so the rate
+                    # context is deterministic and never empty.
+                    po.company_id,
                     date,
                 )
                 for po in record.purchase_order_ids.filtered(
