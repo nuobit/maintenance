@@ -55,15 +55,14 @@ class MaintenanceRequest(models.Model):
         date = self.env.context.get("actual_date") or fields.Date.today()
         for record in self:
             company_currency = record.currency_id
-            # company_id is optional on maintenance.request (see
-            # _compute_currency_id); fall back to the active company so
-            # _convert never receives an empty company (it asserts on it).
-            company = record.company_id or self.env.company
             total = sum(
+                # maintenance.request.company_id is optional; convert each order
+                # with its own company_id (always set) so _convert never gets an
+                # empty company.
                 po.currency_id._convert(
                     po.amount_total,
                     company_currency,
-                    company,
+                    po.company_id,
                     date,
                 )
                 for po in record.purchase_order_ids.filtered(
